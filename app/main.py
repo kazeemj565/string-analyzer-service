@@ -128,9 +128,9 @@
 
 
 # app/main.py
-from fastapi import FastAPI, HTTPException, Depends, Query, Request
+from fastapi import FastAPI, HTTPException, Depends, Query, Request, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from starlette.status import HTTP_400_BAD_REQUEST, HTTP_422_UNPROCESSABLE_ENTITY
 from sqlalchemy.orm import Session
 from .database import SessionLocal, engine, Base
@@ -156,8 +156,9 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     for err in exc.errors():
         loc = err.get("loc", [])
         err_type = err.get("type", "")
-        # typical shape: {'loc': ('body', 'value'), 'msg': 'field required', 'type': 'value_error.missing'}
-        if err_type == "value_error.missing" and len(loc) >= 1 and loc[-1] == "value":
+        # Accept several possible 'missing' error types
+        if (("value" in loc) and
+            (err_type == "value_error.missing" or err_type == "missing" or "missing" in err_type)):
             return JSONResponse(status_code=HTTP_400_BAD_REQUEST, content={"detail": "Missing 'value' field"})
     # For other validation errors return 422 with details
     return JSONResponse(status_code=HTTP_422_UNPROCESSABLE_ENTITY, content={"detail": exc.errors()})
@@ -171,22 +172,56 @@ def get_db():
         db.close()
 
 
+# def model_to_response(obj: models.AnalyzedString) -> dict:
+#     props = {
+#         "length": obj.length,
+#         "is_palindrome": obj.is_palindrome,
+#         "unique_characters": obj.unique_characters,
+#         "word_count": obj.word_count,
+#         "sha256_hash": obj.sha256_hash,
+#         "character_frequency_map": obj.character_frequency_map,
+#     }
+#     created_iso = obj.created_at.replace(microsecond=0).isoformat() + "Z"
+#     return {
+#         "id": obj.id,
+#         "value": obj.value,
+#         "properties": props,
+#         "created_at": created_iso,
+#     }
+
 def model_to_response(obj: models.AnalyzedString) -> dict:
+    # Ensure sha256 is taken from id (primary key) to avoid AttributeError
+    sha256 = getattr(obj, "id", None) or getattr(obj, "sha256_hash", None)
+
     props = {
         "length": obj.length,
         "is_palindrome": obj.is_palindrome,
         "unique_characters": obj.unique_characters,
         "word_count": obj.word_count,
-        "sha256_hash": obj.sha256_hash,
+        "sha256_hash": sha256,
         "character_frequency_map": obj.character_frequency_map,
     }
-    created_iso = obj.created_at.replace(microsecond=0).isoformat() + "Z"
-    return {
-        "id": obj.id,
+
+    created_iso = None
+    updated_iso = None
+    if getattr(obj, "created_at", None):
+        created_iso = obj.created_at.replace(microsecond=0).isoformat() + "Z"
+    if getattr(obj, "updated_at", None):
+        updated_iso = obj.updated_at.replace(microsecond=0).isoformat() + "Z"
+
+    response = {
+        "id": sha256,
         "value": obj.value,
         "properties": props,
         "created_at": created_iso,
     }
+    # include updated_at if present (schemas expect optional updated_at)
+    if updated_iso:
+        response["updated_at"] = updated_iso
+    else:
+        response["updated_at"] = None
+
+    return response
 
 
 @app.get("/")
@@ -300,12 +335,13 @@ def filter_by_nl(
 # DELETE /strings/{string_value}
 # Return 200 with JSON detail
 # -----------------------
-@app.delete("/strings/{string_value}", status_code=200)
+@app.delete("/strings/{string_value}", status_code=204)
 def delete_string(string_value: str, db: Session = Depends(get_db)):
     deleted = crud.delete_by_value(db, string_value)
     if not deleted:
         raise HTTPException(status_code=404, detail="String does not exist in the system")
-    return {"detail": "Deleted successfully"}
+    # 204 No Content must return empty body
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 
