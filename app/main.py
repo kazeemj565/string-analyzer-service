@@ -245,7 +245,10 @@ def create_string(payload: schemas.StringCreate, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=409, detail="String already exists in the system")
 
-    obj = crud.create_analyzed_string(db, props["sha256_hash"], payload.value, props)
+    # obj = crud.create_analyzed_string(db, props["sha256_hash"], payload.value, props)
+    sha_hash = props["sha256_hash"]
+    obj = crud.create_analyzed_string(db, sha_hash, payload.value, props)
+
     return model_to_response(obj)
 
 

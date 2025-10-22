@@ -73,6 +73,7 @@ def create_analyzed_string(db: Session, string_id: str, value: str, props: Dict)
     """Insert a new analyzed string record."""
     obj = models.AnalyzedString(
         id=string_id,
+        sha256_hash=string_id,
         value=value,
         length=props["length"],
         is_palindrome=props["is_palindrome"],
@@ -117,5 +118,7 @@ def delete_by_value(db: Session, value: str) -> bool:
     db.delete(obj)
     db.commit()
     return True
+
+
 
 
