@@ -18,6 +18,9 @@ app = FastAPI(
     openapi_url="/openapi.json" # Schema endpoint
 )
 
+@app.get("/")
+def root():
+    return {"message": "Welcome to String Analyzer API!"}
 
 def get_db():
     db = SessionLocal()
